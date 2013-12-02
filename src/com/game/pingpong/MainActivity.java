@@ -24,6 +24,8 @@ import org.andengine.entity.primitive.Vector2;
 import org.andengine.entity.scene.IOnSceneTouchListener;
 import org.andengine.entity.scene.Scene;
 import org.andengine.entity.scene.background.Background;
+import org.andengine.entity.scene.background.EntityBackground;
+import org.andengine.entity.scene.background.SpriteBackground;
 import org.andengine.entity.sprite.Sprite;
 import org.andengine.entity.text.Text;
 import org.andengine.entity.util.FPSLogger;
@@ -44,8 +46,10 @@ import org.andengine.util.color.Color;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -76,7 +80,7 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 	float dx = 0, dy = 0, dz = 0, ax = 0, ay = 0, az = 0, tx = 0, ty = 0;
 	Color woodColor = new Color(1, 0.95f, 0.87f);
 	
-	Rectangle handle, handle2, hitHandle, howToEntity;
+	Rectangle handle, handle2, hitHandle, howToEntity, settingsEntity;
 	int wh = 100;
 	
 	ArrayList<Rectangle> hudButtons = new ArrayList<Rectangle>();
@@ -91,9 +95,23 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 	private BitmapTextureAtlas ballTA;
 	private ITextureRegion ballTR;
 	
+	Sprite bg;
+	private BitmapTextureAtlas bgTA;
+	private ITextureRegion bgTR;
+	
+	
 	VertexBufferObjectManager vbom;
 	
-	final Color red = new Color(1, 0, 0), green = new Color(0, 1, 0), blue = new Color(0, 0, 1), cyan = new Color(0, 1, 1);
+	final Color 
+	startColor = new Color(1, 1, 1), setColor = new Color(1, 1, 1), howToColor = new Color(1, 1, 1), 
+	camColor = new Color(1, 1, 1), 
+	vibroColor = new Color(1, 1, 1), resetColor = new Color(1, 1, 1), rateColor = new Color(1, 1, 0);
+
+	Color darkColor = new Color(0.1f, 0, 0);
+	 
+	
+	
+	
 	final float on = 1f, off = 0.3f;
 	int space = 3;
 	
@@ -122,6 +140,10 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 		ballTR = BitmapTextureAtlasTextureRegionFactory.createFromAsset(ballTA, this, "ball.png", 0, 0);
 		ballTA.load();
 		
+		bgTA = new BitmapTextureAtlas(this.getTextureManager(), 1024, 1024);
+		bgTR = BitmapTextureAtlasTextureRegionFactory.createFromAsset(bgTA, this, "bg.png", 0, 0);
+		bgTA.load();
+		
 		font = FontFactory.createFromAsset(this.getFontManager(), this.getTextureManager(), 256, 256, this.getAssets(),
 			    "font.ttf", 46, true, android.graphics.Color.WHITE);
 			  font.load();
@@ -131,24 +153,38 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 		fontSmall.load();
 	}
 
-	private Rectangle createHUDIndicator(HUD h, final int num, final int n, final int nc) { 
+	private Rectangle createHUDIndicator(final int num, final int n, int row) { 
 		float alpha = on;
-		Color c = blue;
+		Color c = camColor;
 		switch (num) {
-			case 0: c = red; break;
-			case 1: c = cyan; break;
+			case 0: c = startColor; break;
+			case 1: c = setColor; break;
+			case 2: c = howToColor; break;
+			case 3: c = camColor; break;
+			case 4: c = camColor; break;
+			case 5: c = camColor; break;
+			case 6: c = vibroColor; break;
+			case 7: c = resetColor; break;
+			case 8: c = rateColor; break;
 		}
 		
-		if (num > n - nc) alpha = off;
+		if (num > 3 && num < 6) alpha = off;
+		if (num == 6) if (vibro) alpha = on; else alpha = off;
 		
-		Rectangle rect = new Rectangle(space + num * CW / n, 20, CW / n - 2 * space, 20, vbom);//new Rectangle(20 + num * CW / n, 20, CW / n - 40, 20, vbom);
+		int dx = 20; if (row > 0) dx += 60;
+		if (row > 0) row -=1;
+		
+		Rectangle rect = new Rectangle(space + (num % 3) * CW / 3, dx + row * 110, CW / 3 - 2 * space, 20, vbom);//new Rectangle(20 + num * CW / n, 20, CW / n - 40, 20, vbom);
 		rect.setColor(c);
 		rect.setAlpha(alpha);
 		return rect;
 	}
 	
-	private Rectangle createHUDButton(HUD h, final int num, final int n, final int nc) {	
-		Rectangle button = new Rectangle(space + num * CW / n, 40, CW / n - 2 * space, 90, vbom) {
+	private Rectangle createHUDButton(HUD hud, final int num, final int n, int row) {
+		int dx = 40; if (row > 0) dx += 60; 
+		if (row > 0) row -=1;
+		
+		Rectangle button = new Rectangle(space + (num % 3) * CW / 3, dx + row * 110, CW / 3 - 2 * space, 90, vbom) {
 			@Override
 			public boolean onAreaTouched(TouchEvent pSceneTouchEvent, float X, float Y) {
 				if (pSceneTouchEvent.isActionUp()) {
@@ -157,9 +193,52 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 					case 0: // reset
 						resetGame(); 
 						break;
+						
+					case 1: // options
+						if (hudIndicators.get(num).getAlpha() == on)  {
+							showSettings(true);
+							
+							hudIndicators.get(num).setAlpha(off);
+							}
+						else {
+							showSettings(false);
+							hudIndicators.get(num).setAlpha(on);
+							}
+						break;
+						
+					case 2: // how to play
+						if (hudIndicators.get(num).getAlpha() == on)  {
+							showHowTo(true);
+							hudIndicators.get(num).setAlpha(off);
+							}
+						else {
+							showHowTo(false);
+							hudIndicators.get(num).setAlpha(on);
+							}
+						break;
 
-					case 1: // vibro
+						//cam
+					case 3:
+						cam = 1;
+						for (int i = 3; i < 6; i ++) hudIndicators.get(i).setAlpha(off);
+						hudIndicators.get(num).setAlpha(on);
+						break;
+						//cam
+					case 4:
+						cam = 2;
+						for (int i = 3; i < 6; i ++) hudIndicators.get(i).setAlpha(off);
+						hudIndicators.get(num).setAlpha(on);
+						break;
+						//cam
+					case 5:
+						cam = 3;
+						for (int i = 3; i < 6; i ++) hudIndicators.get(i).setAlpha(off);
+						hudIndicators.get(num).setAlpha(on);
+						break;
+
+					case 6:
 						vibro = !vibro;
+						updateVibro();
 						vibrate(20);
 						if (hudIndicators.get(num).getAlpha() == on)  {
 							hudIndicators.get(num).setAlpha(off);
@@ -167,71 +246,106 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 						else 
 							hudIndicators.get(num).setAlpha(on);
 						break;
-
-					case 2:
-						cam = 1;
-						for (int i = n - nc; i < n; i ++) hudIndicators.get(i).setAlpha(off);
-						hudIndicators.get(num).setAlpha(on);
+						
+					case 7:
+						activity.runOnUiThread(new Runnable() {
+							  public void run() {
+						AlertDialog.Builder ad = new AlertDialog.Builder(activity);
+				        ad.setTitle("CLEAR HIGHSCORES");
+				        ad.setMessage("Your highscores will be erased if you confirm.");
+				        ad.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+				            public void onClick(DialogInterface dialog, int which) {
+				            	spe.putInt("gold", 0);
+								spe.putInt("silver", 0);
+								spe.putInt("bronze", 0);
+								spe.commit();
+								updateScores();
+				          } });
+				        ad.show();
+							  }
+						});
 						break;
-
-					case 3:
-						cam = 2;
-						for (int i = n - nc; i < n; i ++) hudIndicators.get(i).setAlpha(off);
-						hudIndicators.get(num).setAlpha(on);
+						
+					case 8:
+						//RATE
+						Intent intent = new Intent(Intent.ACTION_VIEW);
+						intent.setData(Uri.parse("market://details?id=com.game.pingpong"));
+						startActivity(intent);
 						break;
-
-					case 4:
-						cam = 3;
-						for (int i = n - nc; i < n; i ++) hudIndicators.get(i).setAlpha(off);
-						hudIndicators.get(num).setAlpha(on);
-						break;
-
 					}
 				}
 				return true;
 			}
 		};
-		button.setColor(0, 0, 0);
-		button.setAlpha(0.0f);
-		h.registerTouchArea(button);
+		button.setColor(1, 1, 1);
+		if (num > 2)
+			button.setAlpha(0.1f); 
+		else button.setAlpha(0.0f);
+		hud.registerTouchArea(button);
 		
 		String s = "";
 		switch (num) {
 
-		case 0: // reset
+		case 0:
 			s = "START";
 			break;
 
 		case 1:
-			s = "VIBRO";// vibro
+			s = "SETTINGS";
 			break;
 
 		case 2:
+			s = "HOW TO";
+			break;
+			
+		case 3:
 			s = "CAM 1";
 			break;
-
-		case 3:
+			
+		case 4:
 			s = "CAM 2";
 			break;
-
-		case 4:
+			
+		case 5:
 			s = "CAM 3";
+			break;
+			
+		case 6:
+			s = "VIBRO";
+			break;
+			
+		case 7:
+			s = "RESET HS";
+			break;
+			
+		case 8:
+			s = "RATE IT";
 			break;
 
 		}
-		Text t = new Text(0, 0, font, s, "XXXXX".length(), vbom);
-		t.setScale(0.5f);
+		Text t = new Text(0, 0, font, s, 15, vbom);
+		t.setScale(0.7f);
 		t.setAlpha(textAlpha);
 		button.attachChild(t);
 		
 		return button;
 	}
 	
+	private void showHowTo(boolean b) {
+		paused = b;
+		howToEntity.setVisible(b);
+	}
+
+	private void showSettings(boolean b) {
+		paused = b;
+		if (b) settingsEntity.setPosition(0, 130); else settingsEntity.setPosition(-1000, -1000);//settingsEntity.setVisible(b);	
+	}
+	
 	private HUD createHUD() {
 		HUD hud = new HUD();		
 		
-		int ncams = 3;
-		int nbuttons = 5;
+		//int ncams = 3;
+		int nbuttons = 9;
 		curScoreText = new Text(20, 150, font, "", "SCORE: XXXXXXXXXX".length(), vbom);
 		curScoreText.setColor(curScoreColor);
 		hud.attachChild(curScoreText);
@@ -256,21 +370,33 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 		hud.attachChild(hsBronzeText);
 		
 		updateScores();
+		vibro = sp.getBoolean("vibro", true);
+		
+		settingsEntity = new Rectangle(-1000, -1000, CW, 300 + space, vbom); // 0 130
+		settingsEntity.setColor(darkColor);
+		hud.attachChild(settingsEntity);
 		
 		Rectangle r;
 		for (int i = 0; i < nbuttons; i ++) {
-			r = createHUDIndicator(hud, i, nbuttons, ncams);
+			r = createHUDIndicator(i, nbuttons, i / 3);
 			hudIndicators.add(r);
-			hud.attachChild(r);
+			if (i < 3) 
+				hud.attachChild(r); 
+			else settingsEntity.attachChild(r);
 		}
 		for (int i = 0; i < nbuttons; i ++) {
-			r = createHUDButton(hud, i, nbuttons, ncams);
+			r = createHUDButton(hud, i, nbuttons, i / 3);
 			hudButtons.add(r);
-			hud.attachChild(r);
+			if (i < 3) 
+				hud.attachChild(r); 
+			else settingsEntity.attachChild(r);
 		}
+		Rectangle separator = new Rectangle(space, 30, CW - 2 * space, 20, vbom);
+		separator.setColor(setColor);
+		settingsEntity.attachChild(separator);
 		
-		howToEntity = new Rectangle(20, 600, CW - 20, 450, vbom);
-		howToEntity.setColor(0.0f, 0.0f, 0.0f);
+		howToEntity = new Rectangle(0, 430, CW, CH - 430, vbom);
+		howToEntity.setColor(darkColor);
 		String s = "1. Place your device parallel\n" +
 				"    to the ground\n\n" +
 				"2. Click the START button on the top\n\n" +
@@ -282,67 +408,13 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 				"5. Correct the ball trajectory\n" +
 				"    by pressing the screen\n" +
 				"    in the according point";
-		howToText = new Text(10, 25, fontSmall, s, s.length(), vbom);
+		howToText = new Text(30, 25, fontSmall, s, s.length(), vbom);
 		howToEntity.attachChild(howToText);
-		howToEntity.setAlpha(0.7f);
+		howToEntity.setAlpha(0.8f);
 		howToEntity.setVisible(false);
 		hud.attachChild(howToEntity);
-		Rectangle howToR = new Rectangle(0, CH - 100, 300, 100, vbom) {
-			@Override
-			public boolean onAreaTouched(TouchEvent pSceneTouchEvent, float X, float Y) {
-				if (pSceneTouchEvent.isActionUp()) {
-					switchHowTo();
-				} 
-				return true;
-			}};
-			howToR.setAlpha(0f);
-			Text t = new Text(0, 0, font, "HOW TO PLAY", "XXXXXXXXXXX".length(), vbom);
-			t.setScale(0.5f);
-			t.setAlpha(textAlpha);
-			howToR.attachChild(t);
-			hud.registerTouchArea(howToR);
-			hud.attachChild(howToR);
 
-			Rectangle resetHS = new Rectangle(300, CH - 100, 300, 100, vbom) {
-				@Override
-				public boolean onAreaTouched(TouchEvent pSceneTouchEvent, float X, float Y) {
-					if (pSceneTouchEvent.isActionUp()) {
-						activity.runOnUiThread(new Runnable() {
-							  public void run() {
-						AlertDialog.Builder ad = new AlertDialog.Builder(activity);
-				        ad.setTitle("CLEAR HIGHSCORES");
-				        ad.setMessage("Your highscores will be erased if you confirm.");
-				        ad.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-				            public void onClick(DialogInterface dialog, int which) {
-				            	spe.putInt("gold", 0);
-								spe.putInt("silver", 0);
-								spe.putInt("bronze", 0);
-								spe.commit();
-								updateScores();
-				          } });
-				        ad.show();
-							  }
-						});
-					} 
-					return true;
-				}};
-				resetHS.setAlpha(0f);
-				t = new Text(0, 0, font, "CLEAR HIGHSCORES", "XXXXXXXXXXXXXXXX".length(), vbom);
-				t.setScale(0.5f);
-				t.setAlpha(textAlpha);
-				resetHS.attachChild(t);
-				hud.registerTouchArea(resetHS);
-				hud.attachChild(resetHS);
-
-			return hud;
-	}
-	
-	protected void switchHowTo() {
-		if (!howToEntity.isVisible()) {
-			howToEntity.setVisible(true);
-		} else { 
-			howToEntity.setVisible(false);	
-			}
+		return hud;
 	}
 
 	@Override
@@ -354,9 +426,11 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 		enableAccelerationSensor(this);
 		mEngine.enableVibrator(this);
 
+		gameScene.getBackground().setColorEnabled(false);
+
+		bg = new Sprite(0, 0, 720, 1280, bgTR, vbom);
+        gameScene.setBackground(new EntityBackground(bg));
 		
-		
-		gameScene.setBackground(new Background(0.0f, 0.0f, 0.0f));
 		
 		handle2 = new Rectangle((CW - wh) / 2, CH / 2, wh, CH / 2, vbom);
 		handle2.setColor(woodColor);
@@ -491,7 +565,11 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 
 	@Override
 	public boolean onSceneTouchEvent(Scene pScene, TouchEvent te) {
-		if (howToEntity.isVisible()) switchHowTo();
+		if (paused) return false;
+		showHowTo(false);
+		hudIndicators.get(2).setAlpha(on);
+		showSettings(false);
+		hudIndicators.get(1).setAlpha(on);
 		if(te.isActionMove()) {
 			//log("!");
 			tx = te.getX() - ball.getX();
@@ -511,9 +589,11 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 	private void resetGame() {
 	
 		updateScores();
-		
+		curScoreText.setPosition(20, 150);
 		ball.setPosition(xB, yB);
 		r = rb;
+		tx = 0;
+		ty = 0;
 		speed = 0;
 		score = 0;
 		curScoreText.setText("SCORE: " + score);
@@ -549,6 +629,12 @@ public class MainActivity extends SimpleBaseGameActivity implements IOnSceneTouc
 		spe.putInt("gold", g);
 		spe.putInt("silver", s);
 		spe.putInt("bronze", b);
+		return spe.commit();
+	}
+	
+	boolean updateVibro() {
+		// save
+		spe.putBoolean("vibro", vibro);
 		return spe.commit();
 	}
 	
